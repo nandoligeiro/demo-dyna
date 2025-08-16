@@ -1,0 +1,58 @@
+services:
+  zookeeper:
+    image: bitnami/zookeeper:latest
+    ports:
+      - "2181:2181"
+    environment:
+      - ALLOW_ANONYMOUS_LOGIN=yes
+    volumes:
+      - zookeeper_data:/bitnami/zookeeper
+    restart: unless-stopped
+
+  kafka:
+    image: bitnami/kafka:latest
+    ports:
+      - "9092:9092"
+    environment:
+      - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092
+      - ALLOW_PLAINTEXT_LISTENER=yes
+    volumes:
+      - kafka_data:/bitnami/kafka
+    depends_on:
+      - zookeeper
+    restart: unless-stopped
+
+  oneagent:
+    image: dynatrace/oneagent:latest
+    environment:
+      - ONEAGENT_INSTALLER_SCRIPT_URL=${DYNATRACE_API_URL}
+      - ONEAGENT_INSTALLER_DOWNLOAD_TOKEN=${DYNATRACE_TOKEN}
+    volumes:
+      - "/:/mnt/root"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+    pid: "host"
+    network_mode: "host"
+    privileged: true
+    restart: unless-stopped
+
+  invoice-service:
+    build: .
+    ports:
+      - "8080:8080"
+    depends_on:
+      - kafka
+      - oneagent
+    environment:
+      - SPRING_PROFILES_ACTIVE=default
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  zookeeper_data:
+  kafka_data:
